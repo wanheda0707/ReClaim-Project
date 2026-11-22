@@ -411,3 +411,15 @@ export function changePassword(currentPassword: string, newPassword: string) {
   })
 }
 
+export function requestPhoneUpdateCode(phone: string) {
+  return request<{ message: string }>("/profile/phone/request-code", {
+    method: "POST", body: JSON.stringify({ phone }),
+  })
+}
+
+export function verifyPhoneUpdate(phone: string, code: string) {
+  return request<{ user: ApiUser }>("/profile/phone/verify", {
+    method: "POST", body: JSON.stringify({ phone, code }),
+  })
+}
+

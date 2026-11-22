@@ -32,7 +32,7 @@ The console and student workspace share the Node API's record store. Claim decis
 
 ## PLM Outlook email delivery
 
-PLM registration requires an `@plm.edu.ph` address. External User registration accepts other email domains. Both registration and password reset use a one-time code sent to the address on the account. To send real mail, copy `.env.example` to `.env` and configure the Microsoft Graph values:
+PLM registration requires an `@plm.edu.ph` address. External User registration accepts other email domains. Registration, password reset, and contact number updates use a one-time code sent to the address on the account. To send real mail, copy `.env.example` to `.env` and configure the Microsoft Graph values:
 
 - `MS_GRAPH_TENANT_ID`: Microsoft Entra tenant ID.
 - `MS_GRAPH_CLIENT_ID`: app registration client ID.
@@ -45,4 +45,4 @@ Without these values, local development prints the OTP in the backend terminal a
 
 ## Current scope
 
-The API includes verified PLM and External User registration/login, password reset/change, item reports, private ownership-answer checks, multiple claims, return/undo-return, participant messaging/read state, notifications, and profile photos. The JSON store and in-memory sessions are for local development and demos; use a managed database and persistent session store before production deployment.
+The API includes verified PLM and External User registration/login, password reset/change, email-verified contact number updates, item reports, private ownership-answer checks, multiple claims, return/undo-return, participant messaging/read state, notifications, and profile photos. The JSON store and in-memory sessions are for local development and demos; use a managed database and persistent session store before production deployment.
