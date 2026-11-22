@@ -203,10 +203,14 @@ export async function register(input: Record<string, string>) {
     id: session.user.id,
     email: session.user.email || input.email,
     full_name: input.name,
+    phone: input.phone.trim(),
   }
   const { error: profileError } = await supabase
     .from("profiles")
     .upsert(profile, { onConflict: "id" })
+  if (profileError?.code === "23505") {
+    throw new Error("This phone number is already associated with another account.")
+  }
   if (profileError) throw new Error(`Could not save the account profile: ${profileError.message}`)
 
   const result = await request<{ token: string }>("/auth/supabase-session", {
