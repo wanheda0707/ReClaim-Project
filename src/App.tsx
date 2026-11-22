@@ -18,6 +18,7 @@ import {
   markReturned,
   register,
   resendVerification,
+  requestPhoneUpdateCode,
   requestPasswordReset,
   resetPassword,
   saveProfile,
@@ -26,6 +27,7 @@ import {
   setNotificationRead,
   undoReturned,
   startRegistration,
+  verifyPhoneUpdate,
   updateClaim,
   verifyRegistrationEmail,
   verifyPasswordReset,
@@ -81,6 +83,10 @@ type ItemStatus = "Lost" | "Found" | "Pending Claim" | "Claimed" | "Returned"
 type ClaimStatus = "Pending" | "Approved" | "Rejected" | "Returned to another claimant"
 type RewardType = "none" | "money" | "other"
 type AuthView = "home" | "about" | "login" | "signup" | "forgot" | "verify"
+const phonePattern = "^[0-9+() -]{7,20}$"
+const sanitizePhoneNumber = (value: string) => value.replace(/[^0-9+() -]/g, "").slice(0, 20)
+const isValidPhoneNumber = (value: string) =>
+  new RegExp(phonePattern).test(value) && (value.match(/\d/g) || []).length >= 7
 
 type DemoUser = {
   id: string
@@ -900,6 +906,7 @@ function Auth({ onLogin }: { onLogin: () => Promise<void> }) {
     const form = new FormData(event.currentTarget)
     const values = Object.fromEntries([...form.entries()].map(([key, value]) => [key, String(value)]))
     if (values.password !== values.confirm) { setError("Passwords do not match."); return }
+    if (!isValidPhoneNumber(values.contact || "")) { setError("Enter a contact number using 7 to 20 digits or common phone symbols."); return }
     if (!values.privacy) { setError("Agree to the privacy policy to continue."); return }
     setBusy(true)
     setError("")
@@ -1225,7 +1232,6 @@ function Auth({ onLogin }: { onLogin: () => Promise<void> }) {
                           name="contact"
                           placeholder="Enter your contact number"
                           inputMode="tel"
-                          pattern="^[0-9+() -]{7,20}$"
                           title="Enter a valid contact number using 7 to 20 digits or common phone symbols."
                         />
                         {role === "student" && (
@@ -1308,7 +1314,10 @@ function SignupFlow({ onDone }: { onDone: (email: string) => void | Promise<void
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
-  const [details, setDetails] = useState({ name: "", studentNumber: "", phone: "", school: "", password: "", confirm: "" })
+  const [details, setDetailsState] = useState({ name: "", studentNumber: "", phone: "", school: "", password: "", confirm: "" })
+  function setDetails(next: typeof details) {
+    setDetailsState({ ...next, phone: sanitizePhoneNumber(next.phone) })
+  }
   const passwordRule = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/
   const external = accountKind === "external"
 
@@ -1334,6 +1343,7 @@ function SignupFlow({ onDone }: { onDone: (email: string) => void | Promise<void
 
   async function createAccount(event: FormEvent) {
     event.preventDefault(); setError("")
+    if (!isValidPhoneNumber(details.phone)) { setError("Enter a contact number using 7 to 20 digits or common phone symbols."); return }
     if (!passwordRule.test(details.password)) { setError("Password needs 8+ characters, an uppercase letter, a number, and a special character."); return }
     if (details.password !== details.confirm) { setError("Passwords do not match."); return }
     setBusy(true)
@@ -1503,12 +1513,16 @@ function Field({
         <input
           id={name}
           name={name}
-          type={type}
+            type={name === "contact" ? "tel" : type}
           placeholder={placeholder}
-          inputMode={inputMode}
-          pattern={pattern}
+            inputMode={name === "contact" ? "tel" : inputMode}
+            pattern={name === "contact" ? phonePattern : pattern}
+            maxLength={name === "contact" ? 20 : undefined}
           title={title}
           required={!label.includes("optional")}
+            onChange={name === "contact" ? (event) => {
+              event.currentTarget.value = sanitizePhoneNumber(event.currentTarget.value)
+            } : undefined}
         />
       </div>
     </div>
@@ -1883,6 +1897,10 @@ export default function App() {
               user={currentUser}
               notify={notify}
               onLogout={signOut}
+              onUpdatePhone={async (phone, code) => {
+                const { user } = await verifyPhoneUpdate(phone, code)
+                setCurrentUser(mapUser(user))
+              }}
               onSave={async (photo) => {
                 const user = await saveProfile({ photo })
                 setCurrentUser(mapUser(user))
@@ -3186,6 +3204,7 @@ function Profile({
   notify,
   onLogout,
   onSave,
+  onUpdatePhone,
   reportCount,
   returnCount,
 }: {
@@ -3193,13 +3212,19 @@ function Profile({
   notify: (message: string) => void
   onLogout: () => void | Promise<void>
   onSave: (photo: string) => Promise<void>
+  onUpdatePhone: (phone: string, code: string) => Promise<void>
   reportCount: number
   returnCount: number
 }) {
   const [photo, setPhoto] = useState(user.photo || "")
   const [photoError, setPhotoError] = useState("")
   const photoRef = useRef<HTMLInputElement>(null)
-  const [phone] = useState(user.phone || "")
+  const [phone, setPhone] = useState(user.phone || "")
+  const [phoneEditing, setPhoneEditing] = useState(false)
+  const [phoneCodeSent, setPhoneCodeSent] = useState(false)
+  const [phoneCode, setPhoneCode] = useState("")
+  const [phoneError, setPhoneError] = useState("")
+  const [phoneBusy, setPhoneBusy] = useState(false)
   const [securityOpen, setSecurityOpen] = useState(false)
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
@@ -3242,7 +3267,7 @@ function Profile({
           </button>
         </aside>
         <section className="settings-card">
-          <div className="settings-head"><div><h3>{user.accountType === "External User" ? "External account details" : "PLM resident account details"}</h3><p>These verified details can't be edited here.</p></div></div>
+          <div className="settings-head"><div><h3>{user.accountType === "External User" ? "External account details" : "PLM resident account details"}</h3><p>Identity details are locked. Contact number changes require email verification.</p></div></div>
           <div className="settings-fields">
             <ProfileField label="Full name" value={user.name} />
             <ProfileField label={user.accountType === "External User" ? "Account email" : "Official PLM resident email"} value={user.email} />
@@ -3251,7 +3276,97 @@ function Profile({
             ) : (
               <ProfileField label={user.staffId ? "Staff ID" : "Student number"} value={user.staffId || user.studentNumber || "Not provided"} />
             )}
-            <ProfileField label="Contact number" value={phone} placeholder="Not provided" />
+            <div>
+              <label className="field-label" htmlFor="profile-phone">Contact number</label>
+              {!phoneEditing ? (
+                <div className="flex items-center gap-3">
+                  <input id="profile-phone" value={phone} placeholder="Not provided" disabled />
+                  <button type="button" className="btn-tertiary shrink-0" onClick={() => {
+                    setPhoneError("")
+                    setPhoneEditing(true)
+                  }}>Update</button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <input
+                    id="profile-phone"
+                    className="plain-input w-full"
+                    type="tel"
+                    inputMode="tel"
+                    maxLength={20}
+                    pattern={phonePattern}
+                    value={phone}
+                    onChange={(event) => {
+                      setPhone(sanitizePhoneNumber(event.target.value))
+                      setPhoneCodeSent(false)
+                      setPhoneCode("")
+                      setPhoneError("")
+                    }}
+                    placeholder="+63 9XX XXX XXXX"
+                  />
+                  {phoneCodeSent ? (
+                    <>
+                      <p className="text-sm text-muted">Enter the six-digit code sent to your registered email, {user.email}.</p>
+                      <label className="field-label" htmlFor="profile-phone-code">Email verification code</label>
+                      <input
+                        id="profile-phone-code"
+                        className="plain-input w-full text-center tracking-[0.35em]"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        maxLength={6}
+                        value={phoneCode}
+                        onChange={(event) => setPhoneCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                        placeholder="000000"
+                      />
+                    </>
+                  ) : null}
+                  {phoneError && <div className="form-error">{phoneError}</div>}
+                  <div className="flex flex-wrap gap-2">
+                    {!phoneCodeSent ? (
+                      <button type="button" className="btn-primary" disabled={phoneBusy} onClick={async () => {
+                        if (!isValidPhoneNumber(phone)) {
+                          setPhoneError("Enter a contact number using 7 to 20 digits or common phone symbols.")
+                          return
+                        }
+                        setPhoneBusy(true)
+                        setPhoneError("")
+                        try {
+                          await requestPhoneUpdateCode(phone)
+                          setPhoneCodeSent(true)
+                        } catch (cause) {
+                          setPhoneError(cause instanceof Error ? cause.message : "Could not send the verification code.")
+                        } finally {
+                          setPhoneBusy(false)
+                        }
+                      }}>{phoneBusy ? "Sending code…" : "Send email code"}</button>
+                    ) : (
+                      <button type="button" className="btn-primary" disabled={phoneBusy || phoneCode.length !== 6} onClick={async () => {
+                        setPhoneBusy(true)
+                        setPhoneError("")
+                        try {
+                          await onUpdatePhone(phone, phoneCode)
+                          setPhoneEditing(false)
+                          setPhoneCodeSent(false)
+                          setPhoneCode("")
+                          notify("Contact number updated.")
+                        } catch (cause) {
+                          setPhoneError(cause instanceof Error ? cause.message : "Could not update contact number.")
+                        } finally {
+                          setPhoneBusy(false)
+                        }
+                      }}>{phoneBusy ? "Verifying…" : "Verify & update"}</button>
+                    )}
+                    <button type="button" className="btn-tertiary" disabled={phoneBusy} onClick={() => {
+                      setPhone(user.phone || "")
+                      setPhoneEditing(false)
+                      setPhoneCodeSent(false)
+                      setPhoneCode("")
+                      setPhoneError("")
+                    }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <div className="settings-divider" />
           <div className="settings-head">

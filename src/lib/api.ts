@@ -203,10 +203,14 @@ export async function register(input: Record<string, string>) {
     id: session.user.id,
     email: session.user.email || input.email,
     full_name: input.name,
+    phone: input.phone.trim(),
   }
   const { error: profileError } = await supabase
     .from("profiles")
     .upsert(profile, { onConflict: "id" })
+  if (profileError?.code === "23505") {
+    throw new Error("This phone number is already associated with another account.")
+  }
   if (profileError) throw new Error(`Could not save the account profile: ${profileError.message}`)
 
   const result = await request<{ token: string }>("/auth/supabase-session", {
@@ -404,6 +408,18 @@ export async function saveProfile(input: { photo: string }) {
 export function changePassword(currentPassword: string, newPassword: string) {
   return request<{ message: string }>("/profile/password", {
     method: "PUT", body: JSON.stringify({ currentPassword, newPassword }),
+  })
+}
+
+export function requestPhoneUpdateCode(phone: string) {
+  return request<{ message: string }>("/profile/phone/request-code", {
+    method: "POST", body: JSON.stringify({ phone }),
+  })
+}
+
+export function verifyPhoneUpdate(phone: string, code: string) {
+  return request<{ user: ApiUser }>("/profile/phone/verify", {
+    method: "POST", body: JSON.stringify({ phone, code }),
   })
 }
 

@@ -163,7 +163,7 @@ async function supabaseRequest(path, options = {}) {
     headers: { apikey: supabaseServiceRoleKey, Authorization: `Bearer ${supabaseServiceRoleKey}`, "Content-Type": "application/json", ...(options.headers || {}) },
   })
   const payload = await response.json().catch(() => ({}))
-  if (!response.ok) throw Object.assign(new Error(payload.message || payload.error || "Supabase request failed."), { status: 502 })
+  if (!response.ok) throw Object.assign(new Error(payload.message || payload.error || "Supabase request failed."), { status: 502, code: payload.code })
   return payload
 }
 async function supabaseProfile(authId) {
@@ -211,6 +211,7 @@ function verifyCode(email, purpose, code) {
   if (challenge.code !== clean(code, 6)) throw Object.assign(new Error("The verification code is incorrect."), { status: 400 })
   challenges.delete(key)
 }
+const validPhone = (value) => /^[0-9+() -]{7,20}$/.test(value) && (value.match(/\d/g) || []).length >= 7
 function addNotification(userId, type, title, text, target) {
   db.notifications.unshift({ id: id("n_"), userId, type, title, text, time: "Just now", unread: true, target })
 }
@@ -241,11 +242,17 @@ async function sendVerificationEmail(purpose, email, code) {
     graphToken = tokenData.access_token
     graphTokenExpires = Date.now() + Number(tokenData.expires_in || 3600) * 1000
   }
-  const reset = purpose.toLowerCase().includes("reset")
-  const subject = reset ? "ReClaim password reset code" : "Verify your email for ReClaim"
+  const purposeLabel = purpose.toLowerCase()
+  const reset = purposeLabel.includes("reset")
+  const phoneUpdate = purposeLabel.includes("contact number")
+  const subject = reset
+    ? "ReClaim password reset code"
+    : phoneUpdate ? "ReClaim contact number update code" : "Verify your email for ReClaim"
   const message = reset
     ? `Your ReClaim password reset code is ${code}. It expires in 15 minutes. If you did not request this, ignore this email.`
-    : `Your ReClaim verification code is ${code}. It expires in 15 minutes. Enter it in ReClaim to continue creating your account.`
+    : phoneUpdate
+      ? `Your ReClaim code to update your contact number is ${code}. It expires in 15 minutes. If you did not request this, ignore this email.`
+      : `Your ReClaim verification code is ${code}. It expires in 15 minutes. Enter it in ReClaim to continue creating your account.`
   const response = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`, {
     method: "POST", headers: { authorization: `Bearer ${graphToken}`, "content-type": "application/json" },
     body: JSON.stringify({ message: { subject, body: { contentType: "Text", content: message }, toRecipients: [{ emailAddress: { address: email } }] }, saveToSentItems: true }),
@@ -829,6 +836,49 @@ async function handler(req, res) {
         if (photo && !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(photo)) throw Object.assign(new Error("Upload a PNG, JPEG, or WebP profile photo."), { status: 400 })
         user.photo = photo
       }
+      await persist()
+      return send(res, 200, { user: publicUser(user) })
+    }
+
+    if (method === "POST" && route === "/api/profile/phone/request-code") {
+      if (!user.emailVerified) fail(403, "Verify your account email before updating your contact number.")
+      const input = await body(req)
+      const phone = String(input.phone ?? "").trim()
+      if (!validPhone(phone)) fail(400, "Enter a contact number using 7 to 20 digits or common phone symbols.")
+      if (db.users.some((entry) => entry.id !== user.id && entry.phone?.replace(/\D/g, "") === phone.replace(/\D/g, ""))) {
+        fail(409, "This phone number is already associated with another account.")
+      }
+      const purpose = "Contact number update"
+      const code = makeCode(user.email, purpose)
+      challenges.get(`${purpose}:${user.email}`).phone = phone
+      const delivery = await notifyPrototypeCode(purpose, user.email, code)
+      return send(res, 200, { message: "A verification code was sent to your registered email.", ...delivery })
+    }
+
+    if (method === "POST" && route === "/api/profile/phone/verify") {
+      const input = await body(req)
+      const phone = String(input.phone ?? "").trim()
+      if (!validPhone(phone)) fail(400, "Enter a contact number using 7 to 20 digits or common phone symbols.")
+      if (db.users.some((entry) => entry.id !== user.id && entry.phone?.replace(/\D/g, "") === phone.replace(/\D/g, ""))) {
+        fail(409, "This phone number is already associated with another account.")
+      }
+      const purpose = "Contact number update"
+      const challenge = challenges.get(`${purpose}:${user.email}`)
+      if (!challenge || challenge.phone !== phone) fail(400, "Request a new verification code for this contact number.")
+      verifyCode(user.email, purpose, input.code)
+      if (user.supabaseAuthId) {
+        try {
+          await supabaseRequest(`profiles?id=eq.${encodeURIComponent(user.supabaseAuthId)}`, {
+            method: "PATCH",
+            headers: { Prefer: "return=minimal" },
+            body: JSON.stringify({ phone }),
+          })
+        } catch (error) {
+          if (error.code === "23505") fail(409, "This phone number is already associated with another account.")
+          throw error
+        }
+      }
+      user.phone = phone
       await persist()
       return send(res, 200, { user: publicUser(user) })
     }
