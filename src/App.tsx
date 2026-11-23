@@ -276,7 +276,7 @@ const photos = {
 
 function itemImageSource(source: string) {
   const illustration = /^\/items\/(calculator|card|document|flask|laptop|pencil-case|phone|student-id|wallet)\.svg$/.exec(source)
-  return illustration ? `${import.meta.env.BASE_URL}items/${illustration[1]}.jpg` : source
+  return illustration ? `${import.meta.env.BASE_URL}items/${illustration[1]}.svg` : source
 }
 
 function replaceBrokenItemImage(image: HTMLImageElement, item: ApiItem) {
@@ -914,6 +914,7 @@ function Auth({ onLogin }: { onLogin: () => Promise<void> }) {
     try {
       await register({
         ...values,
+        name: `${values.firstName || ""} ${values.lastName || ""}`.trim(),
         accountType: "plm",
         role,
         idNumber: values.id || "",
@@ -1183,9 +1184,14 @@ function Auth({ onLogin }: { onLogin: () => Promise<void> }) {
                   )}
                   <div className="grid gap-4 sm:grid-cols-2">
                     <Field
-                      label="Full name"
-                      name="name"
-                      placeholder="Your complete name"
+                      label="First Name"
+                      name="firstName"
+                      placeholder="Your first name"
+                    />
+                    <Field
+                      label="Last Name"
+                      name="lastName"
+                      placeholder="Your last name"
                     />
                     {accountKind === "external" && (
                       <Field
@@ -1210,6 +1216,7 @@ function Auth({ onLogin }: { onLogin: () => Promise<void> }) {
                           label="Contact number"
                           name="contact"
                           placeholder="+63 9XX XXX XXXX"
+                          title="Enter 10 digits beginning with 9, for example +63 912 345 6789."
                         />
                         <Field
                           label="School / University (optional)"
@@ -1227,15 +1234,16 @@ function Auth({ onLogin }: { onLogin: () => Promise<void> }) {
                           }
                           name="id"
                           inputMode={role === "student" ? "numeric" : undefined}
-                          pattern={role === "student" ? "[0-9]{9}" : undefined}
+                          pattern={role === "student" ? "(?:20[0-9]{2}-[0-9]{4}|[0-9]{9})" : undefined}
                           placeholder={
-                            role === "student" ? "202411649" : "PLM-STAFF-001"
+                            role === "student" ? "20XX-XXXX" : "PLM-STAFF-001"
                           }
                         />
                         <Field
                           label="Contact number"
                           name="contact"
-                          placeholder="Enter your contact number"
+                          placeholder="+63 9XX XXX XXXX"
+                          title="Enter 10 digits beginning with 9, for example +63 912 345 6789."
                           inputMode="tel"
                           pattern="^[0-9+() -]{7,20}$"
                           title="Enter a valid contact number using 7 to 20 digits or common phone symbols."
@@ -1320,7 +1328,8 @@ function SignupFlow({ onDone }: { onDone: (email: string) => void | Promise<void
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
-  const [details, setDetails] = useState({ name: "", studentNumber: "", phone: "", school: "", password: "", confirm: "" })
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false)
+  const [details, setDetails] = useState({ firstName: "", lastName: "", studentNumber: "", phone: "", school: "", password: "", confirm: "" })
   const passwordRule = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/
   const external = accountKind === "external"
 
@@ -1350,7 +1359,7 @@ function SignupFlow({ onDone }: { onDone: (email: string) => void | Promise<void
     if (details.password !== details.confirm) { setError("Passwords do not match."); return }
     setBusy(true)
     try {
-      await register({ ...details, email, accountType: external ? "External User" : "PLM", role, idNumber: details.studentNumber, phone: details.phone })
+      await register({ ...details, name: `${details.firstName.trim()} ${details.lastName.trim()}`.trim(), email, accountType: external ? "External User" : "PLM", role, idNumber: details.studentNumber, phone: details.phone })
       await onDone(email)
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not create your account.") }
     finally { setBusy(false) }
@@ -1369,8 +1378,8 @@ function SignupFlow({ onDone }: { onDone: (email: string) => void | Promise<void
     {stage === "choose" && <><p className="eyebrow mt-5">Create your account</p><h1 className="font-display text-3xl font-bold text-navy mt-2">Join the recovery network.</h1><div className="mt-6 grid gap-4 sm:grid-cols-2"><AccountCard icon={<IdCard />} title="PLM Resident / Staff" text="Use your verified university credentials." onClick={() => { setAccountKind("plm"); setStage("email") }} /><AccountCard icon={<UserRound />} title="External User" text="For visitors and members of other schools." onClick={() => { setAccountKind("external"); setStage("email") }} /></div></>}
     {stage === "email" && <><p className="eyebrow mt-5">{external ? "External account registration" : "PLM resident account registration"}</p><h1 className="font-display text-3xl font-bold text-navy mt-2">Verify your email first.</h1><form className="mt-6 space-y-5" onSubmit={sendCode}><p className="auth-copy">We'll send a one-time code to your {external ? "email inbox" : "PLM Outlook inbox"}.</p><label className="field-label" htmlFor="signup-email">{external ? "Email address" : "Official PLM resident email"}</label><input className="plain-input w-full" id="signup-email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder={external ? "you@example.com" : "name@plm.edu.ph"} />{error && <div className="form-error">{error}</div>}<button className="btn-primary w-full" disabled={busy}>{busy ? "Sending code…" : "Send OTP"}<ChevronRight size={16} /></button></form></>}
     {stage === "otp" && <><p className="eyebrow mt-5">Email verification</p><h1 className="font-display text-3xl font-bold text-navy mt-2">Check your inbox.</h1><form className="mt-6 space-y-5" onSubmit={checkCode}><p className="auth-copy">Enter the six-digit code sent to <b>{email}</b>.</p><label className="field-label" htmlFor="signup-otp">One-time password</label><input className="plain-input w-full text-center tracking-[0.35em]" id="signup-otp" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="000000" />{error && <div className="form-error">{error}</div>}<button className="btn-primary w-full" disabled={busy || code.length !== 6}>{busy ? "Verifying…" : "Verify email"}<ChevronRight size={16} /></button><button type="button" className="text-button" disabled={busy} onClick={async () => { setError(""); try { await resendVerification(email); setCode("") } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not resend code.") } }}>Resend code</button></form></>}
-    {stage === "details" && <><p className="eyebrow mt-5">{external ? "External account" : "PLM resident account"}</p><h1 className="font-display text-3xl font-bold text-navy mt-2">Complete your account.</h1><form className="mt-6 space-y-4" onSubmit={createAccount}><p className="auth-copy">Verified email: <b>{email}</b></p>{!external && <div className="segmented"><button type="button" className={role === "student" ? "active" : ""} onClick={() => setRole("student")}>Student</button><button type="button" className={role === "staff" ? "active" : ""} onClick={() => setRole("staff")}>Staff</button></div>}<label className="field-label" htmlFor="signup-name">Full name</label><input className="plain-input w-full" id="signup-name" required value={details.name} onChange={(event) => setDetails({ ...details, name: event.target.value })} />{external ? <><label className="field-label" htmlFor="signup-school">School / University (optional)</label><input className="plain-input w-full" id="signup-school" value={details.school} onChange={(event) => setDetails({ ...details, school: event.target.value })} /><label className="field-label" htmlFor="signup-phone">Contact number</label><input className="plain-input w-full" id="signup-phone" type="tel" pattern={phonePattern} required value={details.phone} onChange={(event) => setDetails({ ...details, phone: phoneInput(event.target.value) })} /></> : <><label className="field-label" htmlFor="signup-id">{role === "student" ? "Student number" : "Staff ID"}</label><input className="plain-input w-full" id="signup-id" required placeholder={role === "student" ? "202411649" : "Staff ID"} inputMode={role === "student" ? "numeric" : undefined} pattern={role === "student" ? "[0-9]{9}" : undefined} value={details.studentNumber} onChange={(event) => setDetails({ ...details, studentNumber: role === "student" ? studentInput(event.target.value) : event.target.value })} /><label className="field-label" htmlFor="signup-phone">Contact number</label><input className="plain-input w-full" id="signup-phone" type="tel" pattern={phonePattern} required value={details.phone} onChange={(event) => setDetails({ ...details, phone: phoneInput(event.target.value) })} /></>}<label className="field-label" htmlFor="signup-password">Password</label><div className="field-wrap"><input id="signup-password" className="w-full" type={showPassword ? "text" : "password"} required value={details.password} onChange={(event) => setDetails({ ...details, password: event.target.value })} /><button type="button" className="field-action" onClick={() => setShowPassword(!showPassword)} aria-label="Toggle password visibility">{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div><small className="text-muted">At least 8 characters, with uppercase, number, and special character.</small><label className="field-label" htmlFor="signup-confirm">Confirm password</label><div className="field-wrap"><input id="signup-confirm" className="w-full" type={showPassword ? "text" : "password"} required value={details.confirm} onChange={(event) => setDetails({ ...details, confirm: event.target.value })} /><button type="button" className="field-action" onClick={() => setShowPassword(!showPassword)} aria-label="Toggle password visibility">{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div><label className="flex items-start gap-2 text-xs text-muted"><input type="checkbox" required />I agree to ReClaim's privacy and responsible use policy.</label>{error && <div className="form-error">{error}</div>}<button className="btn-primary w-full" disabled={busy}>{busy ? "Creating account…" : "Create account"}<ChevronRight size={16} /></button></form></>}
-  </div></main></div>
+    {stage === "details" && <><p className="eyebrow mt-5">{external ? "External account" : "PLM resident account"}</p><h1 className="font-display text-3xl font-bold text-navy mt-2">Complete your account.</h1><form className="mt-6 space-y-4" onSubmit={createAccount}><p className="auth-copy">Verified email: <b>{email}</b></p>{!external && <div className="segmented"><button type="button" className={role === "student" ? "active" : ""} onClick={() => setRole("student")}>Student</button><button type="button" className={role === "staff" ? "active" : ""} onClick={() => setRole("staff")}>Staff</button></div>}<div className="grid gap-4 sm:grid-cols-2"><div><label className="field-label" htmlFor="signup-first-name">First Name</label><input className="plain-input w-full" id="signup-first-name" required value={details.firstName} onChange={(event) => setDetails({ ...details, firstName: event.target.value })} /></div><div><label className="field-label" htmlFor="signup-last-name">Last Name</label><input className="plain-input w-full" id="signup-last-name" required value={details.lastName} onChange={(event) => setDetails({ ...details, lastName: event.target.value })} /></div></div>{external ? <><label className="field-label" htmlFor="signup-school">School / University (optional)</label><input className="plain-input w-full" id="signup-school" value={details.school} onChange={(event) => setDetails({ ...details, school: event.target.value })} /><label className="field-label" htmlFor="signup-phone">Contact number</label><input className="plain-input w-full" id="signup-phone" type="tel" pattern={phonePattern} required value={details.phone} onChange={(event) => setDetails({ ...details, phone: phoneInput(event.target.value) })} /></> : <><label className="field-label" htmlFor="signup-id">{role === "student" ? "Student number" : "Staff ID"}</label><input className="plain-input w-full" id="signup-id" required placeholder={role === "student" ? "20XX-XXXX" : "Staff ID"} inputMode={role === "student" ? "numeric" : undefined} pattern={role === "student" ? "(?:20[0-9]{2}-[0-9]{4}|[0-9]{9})" : undefined} title={role === "student" ? "Enter a student number like 20XX-XXXX." : undefined} value={details.studentNumber} onChange={(event) => setDetails({ ...details, studentNumber: role === "student" ? studentInput(event.target.value) : event.target.value })} /><label className="field-label" htmlFor="signup-phone">Contact number</label><input className="plain-input w-full" id="signup-phone" type="tel" pattern={phonePattern} required value={details.phone} onChange={(event) => setDetails({ ...details, phone: phoneInput(event.target.value) })} /></>}<label className="field-label" htmlFor="signup-password">Password</label><div className="field-wrap"><input id="signup-password" className="w-full" type={showPassword ? "text" : "password"} required pattern="(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,}" title="Use at least 8 characters, including an uppercase letter, a number, and a special character." value={details.password} onChange={(event) => setDetails({ ...details, password: event.target.value })} /><button type="button" className="field-action" onClick={() => setShowPassword(!showPassword)} aria-label="Toggle password visibility">{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div><small className="text-muted">At least 8 characters, with uppercase, number, and special character.</small><label className="field-label" htmlFor="signup-confirm">Confirm password</label><div className="field-wrap"><input id="signup-confirm" className="w-full" type={showPassword ? "text" : "password"} required value={details.confirm} onChange={(event) => setDetails({ ...details, confirm: event.target.value })} /><button type="button" className="field-action" onClick={() => setShowPassword(!showPassword)} aria-label="Toggle password visibility">{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div><label className="flex items-start gap-2 text-xs text-muted"><input type="checkbox" required /> <span>I agree to ReClaim's <button type="button" className="text-button" onClick={() => setShowPrivacyPolicy(true)}>privacy and responsible use policy</button>.</span></label>{error && <div className="form-error">{error}</div>}<button className="btn-primary w-full" disabled={busy}>{busy ? "Creating account…" : "Create account"}<ChevronRight size={16} /></button></form></>}
+  </div>{showPrivacyPolicy && <div className="modal-backdrop" role="presentation" onClick={() => setShowPrivacyPolicy(false)}><section className="privacy-policy-modal" role="dialog" aria-modal="true" aria-labelledby="privacy-policy-title" onClick={(event) => event.stopPropagation()}><button type="button" className="modal-close" onClick={() => setShowPrivacyPolicy(false)} aria-label="Close privacy policy"><X size={18} /></button><p className="eyebrow">ReClaim policy</p><h2 id="privacy-policy-title">Privacy and responsible use</h2><div className="privacy-policy-content"><p>ReClaim collects the information needed to verify accounts, protect item ownership, and coordinate safe returns.</p><h3>What we collect</h3><p>Your name, verified email, contact number, student or staff identifier, reports, claims, messages, and optional photos.</p><h3>How we use it</h3><p>We use this information to authenticate you, match reports and claims, contact participants through ReClaim, prevent fraud, and support campus custody and privacy review.</p><h3>Who can see it</h3><p>Public reports show only the details needed to identify an item. Contact details, ownership answers, claim evidence, and sensitive identifiers are restricted to authorized ReClaim staff and the people involved in a return.</p><h3>Your responsibility</h3><p>Submit truthful information, do not impersonate an owner, and do not use ReClaim to harass, expose, or misuse another person's information.</p><p className="text-muted">You can contact ReClaim at reclaim@plm.edu.ph about privacy questions or account data.</p></div><button type="button" className="btn-primary w-full" onClick={() => setShowPrivacyPolicy(false)}>Close policy</button></section></div>}</main></div>
 }
 function AuthDecor() {
   return (

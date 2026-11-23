@@ -90,7 +90,7 @@ export function GuestWorkspace({ user, brand, onSignOut }: { user: ApiUser; bran
         <label>Report type<select name="kind" required><option value="Lost">Lost item</option><option value="Found">Found item</option></select></label>
         <label>Contact name<input name="contactName" required maxLength={100} defaultValue={user.name} /></label>
         <label>Verified email<input type="email" value={user.email} readOnly /></label>
-        <label>Phone (optional)<input name="phone" type="tel" pattern={phonePattern} defaultValue={phoneInput(user.phone || "")} onInput={(event) => { event.currentTarget.value = phoneInput(event.currentTarget.value) }} /></label>
+        <label>Phone (optional)<input name="phone" type="tel" pattern={phonePattern} title="Enter 10 digits beginning with 9, for example +63 912 345 6789." placeholder="+63 9XX XXX XXXX" defaultValue={phoneInput(user.phone || "")} onInput={(event) => { event.currentTarget.value = phoneInput(event.currentTarget.value) }} /></label>
         <label>Item name<input name="name" required maxLength={120} /></label>
         <label>Category<select name="category" required>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
         <label>Where it was lost or found<input name="location" required maxLength={160} /></label>

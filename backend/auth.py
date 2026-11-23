@@ -101,7 +101,10 @@ class Auth:
 
     def profile(self, auth_id):
         if not self.service_key:
-            raise ApiError(503, "Supabase admin storage is not configured.", "SUPABASE_NOT_CONFIGURED")
+            # Sign-in verification only needs the public Supabase key. Without
+            # the server-only key, treat the optional profile row as absent;
+            # admin checks will safely resolve to False.
+            return {}
         response = self.client.get(
             f"{self.supabase_url}/rest/v1/profiles",
             params={"select": "full_name,is_admin", "id": f"eq.{auth_id}", "limit": 1},
@@ -182,7 +185,7 @@ class Auth:
         return 200, {"user": public_user(user)}
 
     def verified_identity(self, data):
-        if not self.public_key or not self.service_key:
+        if not self.public_key:
             raise ApiError(503, "Supabase sign-in is not configured on the backend.")
         access_token = required(data.get("accessToken"), "Supabase access token", 16_000)
         response = self.client.get(

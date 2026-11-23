@@ -1,14 +1,19 @@
 import { useState, type FormEvent } from "react"
 import { confirmPhoneChange, requestPhoneChange } from "./lib/api"
 
-export const phonePattern = "\\+?[0-9]{7,15}"
+export const phonePattern = "\\+63 9[0-9]{9}"
 
 export function phoneInput(value: string) {
-  return (value.startsWith("+") ? "+" : "") + value.replace(/[^0-9]/g, "").slice(0, 15)
+  let digits = value.replace(/[^0-9]/g, "")
+  if (digits.startsWith("63")) digits = digits.slice(2)
+  if (digits.startsWith("0")) digits = digits.slice(1)
+  return digits ? `+63 ${digits.slice(0, 10)}` : ""
 }
 
 export function studentInput(value: string) {
-  return value.replace(/[^0-9]/g, "").slice(0, 9)
+  const digits = value.replace(/[^0-9]/g, "").slice(0, 9)
+  if (digits.length <= 8 && digits.length > 4) return `${digits.slice(0, 4)}-${digits.slice(4)}`
+  return digits
 }
 
 export function PhoneSettings({ phone }: { phone?: string }) {
@@ -45,9 +50,9 @@ export function PhoneSettings({ phone }: { phone?: string }) {
   }
 
   return <form className="settings-fields" onSubmit={(event) => void submit(event)}>
-    <p>Current contact number <b>{current || "Not provided"}</b></p>
+    <p>Current contact number <b>{current ? phoneInput(current) : "Not provided"}</b></p>
     <label className="field-label">New contact number
-      <input className="plain-input w-full" type="tel" pattern={phonePattern} value={next} onChange={(event) => setNext(phoneInput(event.target.value))} readOnly={sent} required />
+      <input className="plain-input w-full" type="tel" pattern={phonePattern} title="Enter 10 digits beginning with 9, for example +63 912 345 6789." placeholder="+63 9XX XXX XXXX" value={next} onChange={(event) => setNext(phoneInput(event.target.value))} readOnly={sent} required />
     </label>
     {sent && <label className="field-label">Email verification code
       <input className="plain-input w-full" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} pattern="[0-9]{6}" required />

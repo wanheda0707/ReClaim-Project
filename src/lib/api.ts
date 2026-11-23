@@ -209,6 +209,9 @@ const completedRegistrations = new Set<string>()
 export async function register(input: Record<string, string>) {
   const supabase = getSupabaseClient()
   const email = String(input.email || "").trim().toLowerCase()
+  if (!/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(String(input.password || ""))) {
+    throw new Error("Password needs 8+ characters, an uppercase letter, a number, and a special character.")
+  }
   if (completedRegistrations.has(email)) {
     throw new Error("This account has already been completed.")
   }
